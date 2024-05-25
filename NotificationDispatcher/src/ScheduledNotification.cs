@@ -6,5 +6,10 @@ namespace NotificationDispatcher
     {
         public DateTime ScheduledDeliveryTime { get; set; }
         public required Notification Notification { get; set; }
+
+        public override string ToString()
+        {
+            return $"{Notification.Id} - {ScheduledDeliveryTime} - {Notification.MessengerAccount}";
+        }
     }
 }
