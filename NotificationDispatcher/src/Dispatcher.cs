@@ -46,73 +46,85 @@ namespace NotificationDispatcher
         {
             _scheduledNotifications.Clear();
 
-            Dictionary<string, ScheduledNotification> lastLowPriorityNotifications = [];
-
             foreach (var notification in _notifications.OrderBy(n => n.Created))
             {
-                DateTime scheduledTime = notification.Created;
-                ScheduledNotification scheduledNotification = new()
-                {
-                    Notification = notification,
-                    ScheduledDeliveryTime = scheduledTime,
-                };
-
-                if (notification.Priority == NotificationPriority.Low)
-                {
-                    if (lastLowPriorityNotifications.TryGetValue(notification.MessengerAccount, out ScheduledNotification? lastLowPriorityForAccount))
-                    {
-                        scheduledTime = scheduledTime - lastLowPriorityForAccount.ScheduledDeliveryTime < _24_HOURS
-                            ? lastLowPriorityForAccount.ScheduledDeliveryTime + _24_HOURS
-                            : scheduledTime;
-                    }
-                    lastLowPriorityNotifications[notification.MessengerAccount] = scheduledNotification;
-                }
-
-                bool isCorrectlyScheduled = false;
-                while (!isCorrectlyScheduled)
-                {
-                    var scheduledAfterWithin1Minute = _scheduledNotifications
-                        .Where(n => n.Notification.MessengerAccount == notification.MessengerAccount)
-                        .LastOrDefault(n => n.ScheduledDeliveryTime >= scheduledTime && n.ScheduledDeliveryTime < scheduledTime + _1_MINUTE);
-                    if (scheduledAfterWithin1Minute is not null)
-                    {
-                        scheduledTime = scheduledAfterWithin1Minute.ScheduledDeliveryTime + _1_MINUTE;
-                        continue;
-                    }
-
-                    var scheduledBeforeWithin1Minute = _scheduledNotifications
-                        .Where(n => n.Notification.MessengerAccount == notification.MessengerAccount)
-                        .LastOrDefault(n => n.ScheduledDeliveryTime <= scheduledTime && n.ScheduledDeliveryTime > scheduledTime - _1_MINUTE);
-                    if (scheduledBeforeWithin1Minute is not null)
-                    {
-                        scheduledTime = scheduledBeforeWithin1Minute.ScheduledDeliveryTime + _1_MINUTE;
-                        continue;
-                    }
-
-                    var scheduledAfterWithin10Seconds = _scheduledNotifications.LastOrDefault(n => n.ScheduledDeliveryTime >= scheduledTime && n.ScheduledDeliveryTime < scheduledTime + _10_SECONDS);
-                    if (scheduledAfterWithin10Seconds is not null)
-                    {
-                        scheduledTime = scheduledAfterWithin10Seconds.ScheduledDeliveryTime + _10_SECONDS;
-                        continue;
-                    }
-
-                    var scheduledBeforeWithin10Seconds = _scheduledNotifications.LastOrDefault(n => n.ScheduledDeliveryTime <= scheduledTime && n.ScheduledDeliveryTime > scheduledTime - _10_SECONDS);
-                    if (scheduledBeforeWithin10Seconds is not null)
-                    {
-                        scheduledTime = scheduledBeforeWithin10Seconds.ScheduledDeliveryTime + _10_SECONDS;
-                        continue;
-                    }
-
-                    isCorrectlyScheduled = true;
-                }
-
-                scheduledNotification.ScheduledDeliveryTime = scheduledTime;
-
+                var scheduledNotification = GetScheduled(notification);
                 _scheduledNotifications.Add(scheduledNotification);
             }
 
             _scheduledNotifications = _scheduledNotifications.OrderBy(n => n.ScheduledDeliveryTime).ToList();
             _hasScheduledNotifications = true;
+        }
+
+        private ScheduledNotification GetScheduled(Notification notification)
+        {
+            DateTime scheduledTime = notification.Created;
+
+            if (notification.Priority == NotificationPriority.Low)
+            {
+                var lastScheduledLowPriority = _scheduledNotifications
+                    .Where(n => n.Notification.Priority == NotificationPriority.Low)
+                    .LastOrDefault(n => n.Notification.MessengerAccount == notification.MessengerAccount);
+
+                if (lastScheduledLowPriority is not null && scheduledTime - lastScheduledLowPriority.ScheduledDeliveryTime < _24_HOURS)
+                {
+                    scheduledTime = lastScheduledLowPriority.ScheduledDeliveryTime + _24_HOURS;
+                }
+            }
+
+            ScheduledNotification scheduledNotification = new()
+            {
+                Notification = notification,
+                ScheduledDeliveryTime = scheduledTime,
+            };
+
+            AdjustUntilCorrectlyScheduled(scheduledNotification);
+            return scheduledNotification;
+        }
+
+        private void AdjustUntilCorrectlyScheduled(ScheduledNotification scheduledNotification)
+        {
+            DateTime scheduledTime = scheduledNotification.ScheduledDeliveryTime;
+
+            bool isCorrectlyScheduled = false;
+            while (!isCorrectlyScheduled)
+            {
+                var scheduledAfterWithin1Minute = _scheduledNotifications
+                    .Where(n => n.Notification.MessengerAccount == scheduledNotification.Notification.MessengerAccount)
+                    .LastOrDefault(n => n.ScheduledDeliveryTime >= scheduledTime && n.ScheduledDeliveryTime < scheduledTime + _1_MINUTE);
+                if (scheduledAfterWithin1Minute is not null)
+                {
+                    scheduledTime = scheduledAfterWithin1Minute.ScheduledDeliveryTime + _1_MINUTE;
+                    continue;
+                }
+
+                var scheduledBeforeWithin1Minute = _scheduledNotifications
+                    .Where(n => n.Notification.MessengerAccount == scheduledNotification.Notification.MessengerAccount)
+                    .LastOrDefault(n => n.ScheduledDeliveryTime <= scheduledTime && n.ScheduledDeliveryTime > scheduledTime - _1_MINUTE);
+                if (scheduledBeforeWithin1Minute is not null)
+                {
+                    scheduledTime = scheduledBeforeWithin1Minute.ScheduledDeliveryTime + _1_MINUTE;
+                    continue;
+                }
+
+                var scheduledAfterWithin10Seconds = _scheduledNotifications.LastOrDefault(n => n.ScheduledDeliveryTime >= scheduledTime && n.ScheduledDeliveryTime < scheduledTime + _10_SECONDS);
+                if (scheduledAfterWithin10Seconds is not null)
+                {
+                    scheduledTime = scheduledAfterWithin10Seconds.ScheduledDeliveryTime + _10_SECONDS;
+                    continue;
+                }
+
+                var scheduledBeforeWithin10Seconds = _scheduledNotifications.LastOrDefault(n => n.ScheduledDeliveryTime <= scheduledTime && n.ScheduledDeliveryTime > scheduledTime - _10_SECONDS);
+                if (scheduledBeforeWithin10Seconds is not null)
+                {
+                    scheduledTime = scheduledBeforeWithin10Seconds.ScheduledDeliveryTime + _10_SECONDS;
+                    continue;
+                }
+
+                isCorrectlyScheduled = true;
+            }
+
+            scheduledNotification.ScheduledDeliveryTime = scheduledTime;
         }
     }
 }
