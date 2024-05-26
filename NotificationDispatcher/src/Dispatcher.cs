@@ -10,7 +10,7 @@ namespace NotificationDispatcher
         private readonly List<Notification> _notifications = [];
         private bool _hasScheduledNotifications = true;
 
-        private readonly List<ScheduledNotification> _scheduledNotifications = [];
+        private List<ScheduledNotification> _scheduledNotifications = [];
 
         private readonly TimeSpan _10_SECONDS = new(hours: 0, minutes: 0, seconds: 10);
         private readonly TimeSpan _1_MINUTE = new(hours: 0, minutes: 1, seconds: 0);
@@ -25,7 +25,6 @@ namespace NotificationDispatcher
 
             _notifications.Add(notification);
             _hasScheduledNotifications = false;
-            _scheduledNotifications.Clear();
         }
 
         /// <summary>
@@ -37,6 +36,15 @@ namespace NotificationDispatcher
             {
                 return _scheduledNotifications.AsReadOnly();
             }
+
+            ScheduleNotifications();
+
+            return _scheduledNotifications.AsReadOnly();
+        }
+
+        private void ScheduleNotifications()
+        {
+            _scheduledNotifications.Clear();
 
             Dictionary<string, ScheduledNotification> lastLowPriorityNotifications = [];
 
@@ -103,7 +111,8 @@ namespace NotificationDispatcher
                 _scheduledNotifications.Add(scheduledNotification);
             }
 
-            return _scheduledNotifications.OrderBy(n => n.ScheduledDeliveryTime).ToList().AsReadOnly();
+            _scheduledNotifications = _scheduledNotifications.OrderBy(n => n.ScheduledDeliveryTime).ToList();
+            _hasScheduledNotifications = true;
         }
     }
 }
